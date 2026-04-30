@@ -3,8 +3,13 @@
 
 #include <iostream>
 #include <fstream>
+#include <iomanip>
+#include <cmath>
+#include <stdexcept>
 #include <vector>
 #include <string>
+#include <sstream>
+#include <set>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <Eigen/Dense>
@@ -55,15 +60,66 @@ namespace mypcl
     std::vector<pose> pose_vec;
     std::fstream file;
     file.open(filename);
+    if(!file.is_open())
+      throw std::runtime_error("Cannot open HBA pose file: " + filename);
     double tx, ty, tz, w, x, y, z;
-    while(!file.eof())
+    while(file >> tx >> ty >> tz >> w >> x >> y >> z)
     {
-      file >> tx >> ty >> tz >> w >> x >> y >> z;
       Eigen::Quaterniond q(w, x, y, z);
+      if(!std::isfinite(q.norm()) || q.norm() == 0.0)
+        throw std::runtime_error("Invalid quaternion in HBA pose file: " + filename);
+      q.normalize();
       Eigen::Vector3d t(tx, ty, tz);
       pose_vec.push_back(pose(qe * q, qe * t + te));
     }
     file.close();
+    if(pose_vec.empty())
+      throw std::runtime_error("No HBA poses loaded from: " + filename);
+    std::cout << "loaded HBA poses: " << pose_vec.size() << std::endl;
+    return pose_vec;
+  }
+
+  std::vector<pose> read_tum_pose(const std::string& filename,
+                                  std::vector<std::string>& timestamps)
+  {
+    std::vector<pose> pose_vec;
+    timestamps.clear();
+
+    std::ifstream file(filename.c_str());
+    if(!file.is_open())
+      throw std::runtime_error("Cannot open TUM pose file: " + filename);
+
+    std::string line;
+    int line_num = 0;
+    while(std::getline(file, line))
+    {
+      line_num++;
+      size_t first = line.find_first_not_of(" \t\r\n");
+      if(first == std::string::npos || line[first] == '#')
+        continue;
+
+      std::istringstream iss(line.substr(first));
+      std::string timestamp;
+      double tx, ty, tz, qx, qy, qz, qw;
+      if(!(iss >> timestamp >> tx >> ty >> tz >> qx >> qy >> qz >> qw))
+        throw std::runtime_error("Malformed TUM pose line " + std::to_string(line_num) + " in: " + filename);
+
+      Eigen::Quaterniond q(qw, qx, qy, qz);
+      if(!std::isfinite(q.norm()) || q.norm() == 0.0)
+        throw std::runtime_error("Invalid quaternion in TUM pose file: " + filename);
+      q.normalize();
+      pose_vec.push_back(pose(q, Eigen::Vector3d(tx, ty, tz)));
+      timestamps.push_back(timestamp);
+    }
+
+    if(file.bad())
+      throw std::runtime_error("Error while reading TUM pose file: " + filename);
+    if(pose_vec.size() != timestamps.size())
+      throw std::runtime_error("TUM timestamp/pose length mismatch in: " + filename);
+    if(pose_vec.empty())
+      throw std::runtime_error("No TUM poses loaded from: " + filename);
+
+    std::cout << "loaded TUM poses: " << pose_vec.size() << std::endl;
     return pose_vec;
   }
 
@@ -176,6 +232,34 @@ namespace mypcl
       if(i < pose_vec.size()-1) file << "\n";
     }
     file.close();
+  }
+
+  void write_tum_pose(const std::vector<std::string>& timestamps,
+                      const std::vector<pose>& pose_vec,
+                      const std::string& filename)
+  {
+    if(timestamps.size() != pose_vec.size())
+      throw std::runtime_error("TUM output timestamp/pose length mismatch");
+
+    std::ofstream file(filename.c_str(), std::ofstream::trunc);
+    if(!file.is_open())
+      throw std::runtime_error("Cannot open TUM output pose file: " + filename);
+
+    for(size_t i = 0; i < pose_vec.size(); i++)
+    {
+      Eigen::Quaterniond q = pose_vec[i].q;
+      if(!std::isfinite(q.norm()) || q.norm() == 0.0)
+        throw std::runtime_error("Invalid optimized quaternion while writing TUM poses");
+      q.normalize();
+
+      file << timestamps[i] << " "
+           << std::setprecision(9)
+           << pose_vec[i].t(0) << " " << pose_vec[i].t(1) << " " << pose_vec[i].t(2) << " "
+           << q.x() << " " << q.y() << " " << q.z() << " " << q.w();
+      if(i < pose_vec.size()-1) file << "\n";
+    }
+    file.close();
+    std::cout << "saved TUM poses: " << pose_vec.size() << std::endl;
   }
 }
 

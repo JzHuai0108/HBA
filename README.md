@@ -43,6 +43,8 @@ To test on your own data, please prepare the file structure as follows: a folder
 * `total_layer_num`: number of layers used in HBA. Default value is `3`.
 * `pcd_name_fill_num`: number of prefix zeros in pcd file name (e.g., if pcd starts with `00000.pcd`, please fill in `5`). Default value is `0`.
 * `thread_num`: number of threads used in cpu parallel computation. Default value is `16`.
+* `tum_pose_file`: optional input TUM trajectory. When set, HBA reads poses as `timestamp tx ty tz qx qy qz qw` while still loading point clouds from `data_path/pcd`.
+* `save_tum_pose_file`: optional output path for optimized TUM trajectory. Required when `tum_pose_file` is set.
 #### in `hba.hpp` file
 * `downsample_size`: leaf size used for point cloud downsampling of each LiDAR scan. Default value is `0.1`.
 * `voxel_size`: initial voxel size used in LiDAR BA. Default value is `4.0`.

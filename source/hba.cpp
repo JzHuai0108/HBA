@@ -499,13 +499,17 @@ int main(int argc, char** argv)
 
   int total_layer_num, thread_num;
   string data_path;
+  string tum_pose_file, save_tum_pose_file, pose_format = "hba";
 
   nh.getParam("total_layer_num", total_layer_num);
   nh.getParam("pcd_name_fill_num", pcd_name_fill_num);
   nh.getParam("data_path", data_path);
   nh.getParam("thread_num", thread_num);
+  nh.param<string>("tum_pose_file", tum_pose_file, "");
+  nh.param<string>("save_tum_pose_file", save_tum_pose_file, "");
+  nh.param<string>("pose_format", pose_format, tum_pose_file.empty() ? string("hba") : string("tum"));
 
-  HBA hba(total_layer_num, data_path, thread_num);
+  HBA hba(total_layer_num, data_path, thread_num, pose_format, tum_pose_file, save_tum_pose_file);
   for(int i = 0; i < total_layer_num-1; i++)
   {
     std::cout<<"---------------------"<<std::endl;

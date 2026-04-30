@@ -4,6 +4,7 @@
 #include <thread>
 #include <fstream>
 #include <iomanip>
+#include <stdexcept>
 #include <Eigen/Sparse>
 #include <Eigen/Eigenvalues>
 #include <Eigen/SparseCholesky>
@@ -127,12 +128,19 @@ public:
   int thread_num, total_layer_num;
   std::vector<LAYER> layers;
   std::string data_path;
+  std::string pose_format;
+  std::string save_tum_pose_file;
+  std::vector<std::string> tum_timestamps;
 
-  HBA(int total_layer_num_, std::string data_path_, int thread_num_)
+  HBA(int total_layer_num_, std::string data_path_, int thread_num_,
+      std::string pose_format_ = "hba", std::string tum_pose_file_ = "",
+      std::string save_tum_pose_file_ = "")
   {
     total_layer_num = total_layer_num_;
     thread_num = thread_num_;
     data_path = data_path_;
+    pose_format = pose_format_;
+    save_tum_pose_file = save_tum_pose_file_;
 
     layers.resize(total_layer_num);
     for(int i = 0; i < total_layer_num; i++)
@@ -141,7 +149,24 @@ public:
       layers[i].thread_num = thread_num;
     }
     layers[0].data_path = data_path;
-    layers[0].pose_vec = mypcl::read_pose(data_path + "pose.json");
+    if(pose_format == "tum")
+    {
+      if(tum_pose_file_.empty())
+        throw std::runtime_error("pose_format is tum, but tum_pose_file is empty");
+      if(save_tum_pose_file.empty())
+        throw std::runtime_error("pose_format is tum, but save_tum_pose_file is empty");
+      layers[0].pose_vec = mypcl::read_tum_pose(tum_pose_file_, tum_timestamps);
+      if(tum_timestamps.size() != layers[0].pose_vec.size())
+        throw std::runtime_error("TUM input timestamp/pose length mismatch");
+    }
+    else if(pose_format == "hba")
+    {
+      layers[0].pose_vec = mypcl::read_pose(data_path + "pose.json");
+    }
+    else
+    {
+      throw std::runtime_error("Unsupported pose_format: " + pose_format);
+    }
     layers[0].init_parameter();
     layers[0].init_storage(total_layer_num);
 
@@ -254,13 +279,21 @@ public:
     gtsam::Values results = isam.calculateEstimate();
 
     cout << "vertex size " << results.size() << endl;
+    if(pose_format == "tum" && results.size() != init_pose.size())
+      throw std::runtime_error("TUM optimized pose count does not match input pose count");
+    if(pose_format == "tum" && tum_timestamps.size() != init_pose.size())
+      throw std::runtime_error("TUM timestamp/optimized pose length mismatch before save");
 
     for(uint i = 0; i < results.size(); i++)
     {
       gtsam::Pose3 pose = results.at(i).cast<gtsam::Pose3>();
       assign_qt(init_pose[i].q, init_pose[i].t, Eigen::Quaterniond(pose.rotation().matrix()), pose.translation());
+      init_pose[i].q.normalize();
     }
-    mypcl::write_pose(init_pose, data_path);
+    if(pose_format == "tum")
+      mypcl::write_tum_pose(tum_timestamps, init_pose, save_tum_pose_file);
+    else
+      mypcl::write_pose(init_pose, data_path);
     printf("pgo complete\n");
   }
 };
